@@ -26,6 +26,8 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { supabase } from "@/lib/supabase"
+import { useNavigate } from "react-router-dom"
 
 export function NavUser({
   user,
@@ -37,6 +39,12 @@ export function NavUser({
   }
 }) {
   const { isMobile } = useSidebar()
+  const navigate = useNavigate()
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    navigate('/auth/login')
+  }
 
   return (
     <SidebarMenu>
@@ -96,7 +104,7 @@ export function NavUser({
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={handleSignOut}>
               <IconLogout />
               Log out
             </DropdownMenuItem>
