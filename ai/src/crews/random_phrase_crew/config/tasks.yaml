@@ -1,0 +1,16 @@
+phrase_generation_task:
+  description: >
+    Create a short, natural-sounding phrase using the provided words: {words}
+
+    User context: {user_context}
+
+    Your task is to compose a concise phrase that incorporates as many of these words
+    as possible while maintaining natural flow and meaning. Consider the user context
+    to make the phrase more relevant and personalized. It's acceptable to skip
+    words that don't fit naturally. Prioritize creating something that sounds authentic
+    and meaningful rather than forcing all words together awkwardly.
+  expected_output: >
+    A single short phrase (5-15 words) that naturally incorporates the maximum number
+    of provided words while maintaining coherence and meaning. Return ONLY the phrase
+    itself, with no additional explanation or commentary.
+  agent: phrase_creator
