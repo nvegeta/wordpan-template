@@ -85,28 +85,25 @@ cp ai/.env.example ai/.env
 #### Phoenix Observability (`phoenix/.env`)
 ```bash
 cp phoenix/.env.example phoenix/.env
-# Default values should work, but you can customize:
+```
 
 ### 3. Start Supabase
 
-Initialize and start the local Supabase instance:
+Start the local Supabase instance:
 
 ```bash
-# Initialize Supabase (first time only)
-supabase init
-
 # Start Supabase
 supabase start
 ```
 
 This will output your local Supabase credentials, including:
 - API URL (typically `http://127.0.0.1:54321`)
-- `anon` key (use this for `VITE_SUPABASE_ANON_KEY` and `SUPABASE_ANON_KEY`)
-- Service role key
+- `Publishable key` (use this for `VITE_SUPABASE_ANON_KEY` and `SUPABASE_ANON_KEY`)
+- `Secret key` (use this for `SUPABASE_SERVICE_ROLE_KEY`)
 
-**⚠️ IMPORTANT**: Copy the `anon key` and update both `web/.env.local` and `ai/.env` files.
+**⚠️ IMPORTANT**: Update both `web/.env.local` and `ai/.env` files.
 
-### 4. Apply Database Migrations
+### 4. Create clean database and apply migrations
 
 ```bash
 # Create the database schema
@@ -115,17 +112,7 @@ supabase db reset
 
 **Note**: This is safe on first setup. For ongoing development, see the [Database Migration Guidelines](#database-migration-guidelines) section.
 
-### 5. (Optional) Seed the Database
-
-Add some sample words to the database:
-
-```bash
-supabase db seed
-```
-
-Or manually insert words via the Supabase dashboard at `http://127.0.0.1:54323`.
-
-### 6. Start the Application
+### 5. Start the Application
 
 ```bash
 # Start all services with Docker Compose
@@ -205,18 +192,8 @@ supabase migration new <descriptive_name>
 
 For local development:
 ```bash
-# Review the migration first
-cat supabase/migrations/<timestamp>_<name>.sql
-
-# Apply manually via Supabase dashboard or psql
-psql $DATABASE_URL -f supabase/migrations/<timestamp>_<name>.sql
+supabase migration up
 ```
-
-For production:
-- Use Supabase Dashboard → Database → Migrations
-- Or deploy via CI/CD pipeline
-
-This prevents accidental data deletion during development.
 
 ### Debugging
 
