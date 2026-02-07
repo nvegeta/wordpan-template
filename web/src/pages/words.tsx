@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useWords } from '@/hooks/use-words'
 import {
   Table,
@@ -9,8 +10,24 @@ import {
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+} from '@/components/ui/sheet'
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+  FieldError,
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 
 export default function WordsPage() {
+  const [addOpen, setAddOpen] = useState(false)
+  const [newWord, setNewWord] = useState('')
   const {
     words,
     loading,
@@ -19,6 +36,9 @@ export default function WordsPage() {
     totalCount,
     goToNextPage,
     goToPreviousPage,
+    addWord,
+    addLoading,
+    addError,
   } = useWords()
 
   const formatDate = (dateString: string) => {
@@ -31,14 +51,33 @@ export default function WordsPage() {
     })
   }
 
+  const handleAddWord = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmed = newWord.trim()
+    if (!trimmed) return
+    const { error } = await addWord(trimmed)
+    if (!error) {
+      setAddOpen(false)
+      setNewWord('')
+    }
+  }
+
+  const handleCloseAdd = () => {
+    setAddOpen(false)
+    setNewWord('')
+  }
+
   return (
     <div className="container mx-auto py-8">
       <Card>
-        <CardHeader>
-          <CardTitle>Words</CardTitle>
-          <CardDescription>
-            All words from the database (showing {words.length} of {totalCount} words)
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between space-y-0">
+          <div className="space-y-1.5">
+            <CardTitle>Words</CardTitle>
+            <CardDescription>
+              All words from the database (showing {words.length} of {totalCount} words)
+            </CardDescription>
+          </div>
+          <Button onClick={() => setAddOpen(true)}>Add word</Button>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -104,6 +143,44 @@ export default function WordsPage() {
           )}
         </CardContent>
       </Card>
+
+      <Sheet
+        open={addOpen}
+        onOpenChange={(open) => {
+          setAddOpen(open)
+          if (!open) setNewWord('')
+        }}
+      >
+        <SheetContent side="right">
+          <SheetHeader>
+            <SheetTitle>Add new word</SheetTitle>
+          </SheetHeader>
+          <form onSubmit={handleAddWord} className="flex flex-col gap-4 py-4">
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="new-word">Word</FieldLabel>
+                <Input
+                  id="new-word"
+                  value={newWord}
+                  onChange={(e) => setNewWord(e.target.value)}
+                  placeholder="Enter a word"
+                  disabled={addLoading}
+                  autoFocus
+                />
+                {addError && <FieldError>{addError.message}</FieldError>}
+              </Field>
+            </FieldGroup>
+            <SheetFooter className="flex gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={handleCloseAdd} disabled={addLoading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={addLoading || !newWord.trim()}>
+                {addLoading ? 'Adding...' : 'Add'}
+              </Button>
+            </SheetFooter>
+          </form>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

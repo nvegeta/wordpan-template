@@ -11,6 +11,8 @@ export function useWords() {
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalCount, setTotalCount] = useState(0)
+  const [addLoading, setAddLoading] = useState(false)
+  const [addError, setAddError] = useState<Error | null>(null)
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE)
 
@@ -68,6 +70,27 @@ export function useWords() {
     fetchWords()
   }
 
+  const addWord = async (word: string): Promise<{ error: Error | null }> => {
+    setAddError(null)
+    setAddLoading(true)
+    try {
+      const { error } = await supabase.from('words').insert({ word: word.trim() })
+      if (error) {
+        const err = new Error(error.message)
+        setAddError(err)
+        return { error: err }
+      }
+      refresh()
+      return { error: null }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to add word')
+      setAddError(error)
+      return { error }
+    } finally {
+      setAddLoading(false)
+    }
+  }
+
   return {
     words,
     loading,
@@ -78,5 +101,8 @@ export function useWords() {
     goToPreviousPage,
     goToPage,
     refresh,
+    addWord,
+    addLoading,
+    addError,
   }
 }
