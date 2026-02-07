@@ -3,6 +3,7 @@ import {
   IconDashboard,
   IconDatabase,
   IconInnerShadowTop,
+  IconLink,
   IconSparkles,
 } from "@tabler/icons-react"
 
@@ -38,6 +39,11 @@ const data = {
       name: "Words",
       url: "/words",
       icon: IconDatabase,
+    },
+    {
+      name: "Word Pairs",
+      url: "/word-pairs",
+      icon: IconLink,
     },
     {
       name: "Random Phrase",
