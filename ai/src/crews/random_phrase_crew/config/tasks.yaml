@@ -1,0 +1,25 @@
+phrase_generation_task:
+  description: >
+    Create a short, natural-sounding phrase using the provided words: {words}
+
+    User context: {user_context}
+
+    Your task is to compose a concise phrase that incorporates as many of these words
+    as possible while maintaining natural flow and meaning. Consider the user context
+    to make the phrase more relevant and personalized. It's acceptable to skip
+    words that don't fit naturally. Prioritize creating something that sounds authentic
+    and meaningful rather than forcing all words together awkwardly.
+
+    You must return your response as a JSON object with the following structure:
+    {{
+      "phrase": "your generated phrase here",
+      "words": ["word1", "word2", "word3"]
+    }}
+
+    Where "phrase" is the generated phrase, and "words" is a list of the words from the
+    input that you actually used in the phrase.
+  expected_output: >
+    A JSON object with two fields: "phrase" (string) containing a short phrase (5-15 words)
+    that naturally incorporates words from the input, and "words" (array of strings)
+    containing the list of words that were actually used in the phrase.
+  agent: phrase_creator
