@@ -65,8 +65,11 @@ export default function SignUpPage({
         // Check if email confirmation is required
         if (data.user.identities && data.user.identities.length === 0) {
           setError("An account with this email already exists")
+        } else if (data.session) {
+          // User is already signed in (e.g. when email confirmation is disabled)
+          navigate("/")
         } else {
-          // Success! Navigate to login or dashboard
+          // Success but no session yet (e.g. email confirmation required)
           navigate("/auth/login")
         }
       }
