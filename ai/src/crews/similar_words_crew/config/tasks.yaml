@@ -1,0 +1,15 @@
+similar_words_task:
+  description: >
+    Given the word pair "{word1}" and "{word2}", suggest 5 to 8 related words that would
+    help a language learner. Include synonyms, words from the same topic or theme, or
+    words that often go together with these. Keep each suggestion to a single word or
+    short phrase (e.g. "run", "jogging"). Return only the list of suggested words.
+
+    You must return your response as a JSON object with exactly one field:
+    {{
+      "similar_words": ["word1", "word2", "word3", ...]
+    }}
+  expected_output: >
+    A JSON object with one field "similar_words" (array of strings), containing 5 to 8
+    related words. Each item is a single word or short phrase.
+  agent: vocabulary_assistant

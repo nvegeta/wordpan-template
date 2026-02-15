@@ -10,6 +10,8 @@ from supabase import create_client, Client
 
 from crews.random_phrase_crew.crew import RandomPhraseCrew
 from crews.random_phrase_crew.schemas import PhraseOutput
+from crews.similar_words_crew.crew import SimilarWordsCrew
+from crews.similar_words_crew.schemas import SimilarWordsOutput
 
 from lib.tracer import traceable
 
@@ -118,6 +120,25 @@ async def generate_random_phrase(words: list[str], user_context: str) -> PhraseO
     return PhraseOutput(phrase=str(result), words=words)
 
 
+@traceable
+async def get_similar_words(word1: str, word2: str) -> SimilarWordsOutput:
+    """
+    Suggest related words for a word pair using SimilarWordsCrew.
+
+    Args:
+        word1: First word of the pair
+        word2: Second word of the pair
+
+    Returns:
+        SimilarWordsOutput with list of related words
+    """
+    inputs = {"word1": word1, "word2": word2}
+    result = await SimilarWordsCrew().crew().kickoff_async(inputs=inputs)
+    if hasattr(result, "pydantic"):
+        return result.pydantic
+    return SimilarWordsOutput(similar_words=[str(result)])
+
+
 @app.route("/health", methods=["GET"])
 async def health():
     """Health check endpoint."""
@@ -165,6 +186,43 @@ async def get_random_phrase():
 
         return jsonify(result.model_dump()), 200
 
+    except Exception as e:
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/similar-words", methods=["POST"])
+@require_auth
+async def similar_words():
+    """
+    Suggest related words for a word pair.
+
+    Request body:
+        {
+            "word1": "string",
+            "word2": "string"
+        }
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        {
+            "similar_words": ["word1", "word2", ...]
+        }
+    """
+    try:
+        data = request.get_json()
+        if not data or "word1" not in data or "word2" not in data:
+            return (
+                jsonify({"error": "Request body must include 'word1' and 'word2'"}), 400
+            )
+        word1 = (data.get("word1") or "").strip()
+        word2 = (data.get("word2") or "").strip()
+        if not word1 or not word2:
+            return jsonify({"error": "'word1' and 'word2' must be non-empty"}), 400
+
+        result = await get_similar_words(word1, word2)
+        return jsonify(result.model_dump()), 200
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
