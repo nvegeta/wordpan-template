@@ -12,6 +12,7 @@ from crews.random_phrase_crew.crew import RandomPhraseCrew
 from crews.random_phrase_crew.schemas import PhraseOutput
 from crews.similar_words_crew.crew import SimilarWordsCrew
 from crews.similar_words_crew.schemas import SimilarWordsOutput
+from crews.tutor_router_crew.crew import TutorRouterCrew
 
 from lib.tracer import traceable
 
@@ -139,6 +140,43 @@ async def get_similar_words(word1: str, word2: str) -> SimilarWordsOutput:
     return SimilarWordsOutput(similar_words=[str(result)])
 
 
+@traceable
+async def run_tutor_router(
+    messages: list[dict[str, str]],
+    user_context: Optional[str] = None,
+) -> dict:
+    """
+    Run the Smart Tutor router crew on the given conversation history.
+
+    Args:
+        messages: Full conversation history as a list of {role, content} dicts.
+        user_context: Optional user profile/context string.
+
+    Returns:
+        A dict representation of the TutorMessage pydantic output.
+    """
+    inputs: dict = {
+        "messages": messages,
+    }
+    if user_context is not None:
+        inputs["user_context"] = user_context
+
+    result = await TutorRouterCrew().crew().kickoff_async(inputs=inputs)
+
+    if hasattr(result, "pydantic"):
+        # TutorMessage model
+        return result.pydantic.model_dump()
+
+    # Fallback: wrap plain text into a minimal assistant response
+    return {
+        "role": "assistant",
+        "content": str(result),
+        "intent": "off_topic",
+        "word_card": None,
+        "actions": [],
+    }
+
+
 @app.route("/health", methods=["GET"])
 async def health():
     """Health check endpoint."""
@@ -223,6 +261,64 @@ async def similar_words():
 
         result = await get_similar_words(word1, word2)
         return jsonify(result.model_dump()), 200
+    except Exception as e:
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/tutor-chat", methods=["POST"])
+@require_auth
+async def tutor_chat():
+    """
+    Smart Tutor chat endpoint.
+
+    Request body:
+        {
+            "messages": [
+                {"role": "user" | "assistant" | "system", "content": "text"},
+                ...
+            ]
+        }
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        TutorMessage dict:
+        {
+          "role": "assistant",
+          "content": "...",
+          "intent": "...",
+          "word_card": { ... } | null,
+          "actions": [ ... ]
+        }
+    """
+    try:
+        data = request.get_json()
+        if not data or "messages" not in data:
+            return jsonify({"error": "Request body must include 'messages' array"}), 400
+
+        messages = data.get("messages", [])
+        if not isinstance(messages, list) or len(messages) == 0:
+            return jsonify({"error": "'messages' must be a non-empty array"}), 400
+
+        # Basic validation of message structure
+        validated_messages: list[dict[str, str]] = []
+        for msg in messages:
+            role = (msg.get("role") or "").strip()
+            content = (msg.get("content") or "").strip()
+            if role not in {"user", "assistant", "system"} or not content:
+                continue
+            validated_messages.append({"role": role, "content": content})
+
+        if not validated_messages:
+            return jsonify({"error": "No valid messages provided"}), 400
+
+        # Get user context from Supabase (optional, same as random-phrase)
+        user_id = request.user.id
+        user_context = await get_user_context(user_id)
+
+        result = await run_tutor_router(validated_messages, user_context or "")
+        return jsonify(result), 200
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 

@@ -80,6 +80,7 @@ export interface Database {
           role: 'user' | 'assistant' | 'system'
           content: string
           created_at: string
+          metadata: Json
         }
         Insert: {
           id?: string
@@ -87,6 +88,7 @@ export interface Database {
           role: 'user' | 'assistant' | 'system'
           content: string
           created_at?: string
+          metadata?: Json
         }
         Update: {
           id?: string
@@ -94,6 +96,7 @@ export interface Database {
           role?: 'user' | 'assistant' | 'system'
           content?: string
           created_at?: string
+          metadata?: Json
         }
       }
     }

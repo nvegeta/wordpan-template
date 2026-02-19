@@ -11,6 +11,36 @@ export interface SimilarWordsResponse {
   similar_words: string[]
 }
 
+export type TutorIntent =
+  | 'translation'
+  | 'new_vocabulary'
+  | 'grammar_explanation'
+  | 'writing_correction'
+  | 'cultural_context'
+  | 'small_talk_language_related'
+  | 'off_topic'
+
+export interface TutorWordCard {
+  word: string
+  translation: string
+  example_sentence: string
+  explanation?: string | null
+  part_of_speech?: string | null
+}
+
+export interface TutorAction {
+  type: string
+  payload: Record<string, unknown>
+}
+
+export interface TutorMessageResponse {
+  role: 'assistant'
+  content: string
+  intent: TutorIntent
+  word_card: TutorWordCard | null
+  actions: TutorAction[]
+}
+
 /**
  * Generate a random phrase using the AI service
  * @param words - Array of words to use in the phrase
@@ -69,6 +99,36 @@ export async function getSimilarWords(
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
     throw new Error(errorData.error || `Failed to get similar words: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Call the Smart Tutor chat endpoint with full conversation history.
+ * @param messages - Conversation history as an array of { role, content }
+ */
+export async function callTutorChat(
+  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+): Promise<TutorMessageResponse> {
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (!session) {
+    throw new Error('User must be authenticated to chat with tutor')
+  }
+
+  const response = await fetch(`${AI_SERVICE_URL}/api/tutor-chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ messages }),
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(errorData.error || `Tutor chat failed: ${errorData.error || response.statusText}`)
   }
 
   return response.json()

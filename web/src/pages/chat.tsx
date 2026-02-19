@@ -6,9 +6,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { callTutorChat, type TutorMessageResponse, type TutorWordCard } from '@/lib/ai-service'
 
 type Chat = Database['public']['Tables']['chats']['Row']
 type ChatMessage = Database['public']['Tables']['chat_messages']['Row']
+
+interface TutorResponseEntry {
+  messageId: string
+  response: TutorMessageResponse
+}
 
 export default function ChatPage() {
   const { user, loading: userLoading } = useUser()
@@ -22,6 +28,8 @@ export default function ChatPage() {
   const [messagesLoading, setMessagesLoading] = useState(false)
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
+  const [tutorResponses, setTutorResponses] = useState<TutorResponseEntry[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!userLoading && user) {
@@ -32,6 +40,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (!selectedChatId) {
       setMessages([])
+      setTutorResponses([])
       return
     }
     void fetchMessages(selectedChatId)
@@ -77,7 +86,21 @@ export default function ChatPage() {
         return
       }
 
-      setMessages(data || [])
+      const loadedMessages = data || []
+      setMessages(loadedMessages)
+
+      const initialTutorResponses: TutorResponseEntry[] = []
+      for (const msg of loadedMessages) {
+        if (msg.role !== 'assistant') continue
+        const metadata = (msg as any).metadata as { tutor?: TutorMessageResponse } | undefined
+        if (metadata?.tutor) {
+          initialTutorResponses.push({
+            messageId: msg.id,
+            response: metadata.tutor,
+          })
+        }
+      }
+      setTutorResponses(initialTutorResponses)
     } catch (err) {
       console.error('Unexpected error fetching messages:', err)
     } finally {
@@ -108,6 +131,7 @@ export default function ChatPage() {
       setChats((prev) => [data, ...prev])
       setSelectedChatId(data.id)
       setMessages([])
+      setTutorResponses([])
     } catch (err) {
       console.error('Unexpected error creating chat:', err)
     } finally {
@@ -129,6 +153,7 @@ export default function ChatPage() {
         const remaining = chats.filter((c) => c.id !== chatId)
         setSelectedChatId(remaining[0]?.id ?? null)
         setMessages([])
+        setTutorResponses([])
       }
     } catch (err) {
       console.error('Unexpected error deleting chat:', err)
@@ -150,6 +175,7 @@ export default function ChatPage() {
 
     try {
       setSending(true)
+      setError(null)
       setNewMessage('')
 
       const { data, error } = await supabase
@@ -164,22 +190,63 @@ export default function ChatPage() {
 
       if (error) {
         console.error('Error sending message:', error)
+        setError('Failed to send message.')
         return
       }
 
       if (!data) return
 
-      setMessages((prev) => [...prev, data])
+      // Optimistically add user message
+      const updatedMessages = [...messages, data]
+      setMessages(updatedMessages)
 
-      setChats((prev) =>
-        prev
-          .map((c) =>
-            c.id === selectedChatId ? { ...c, updated_at: new Date().toISOString() } : c,
-          )
-          .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)),
-      )
+      // Build conversation history for the tutor
+      const historyForTutor = updatedMessages.map((m) => ({
+        role: m.role as 'user' | 'assistant' | 'system',
+        content: m.content,
+      }))
+
+      try {
+        const tutorReply = await callTutorChat(historyForTutor)
+        // Persist assistant message to Supabase
+        const { data: assistantData, error: assistantError } = await supabase
+          .from('chat_messages')
+          .insert({
+            chat_id: selectedChatId,
+            role: 'assistant',
+            content: tutorReply.content,
+            metadata: { tutor: tutorReply },
+          })
+          .select()
+          .single()
+
+        if (assistantError) {
+          console.error('Error saving tutor response:', assistantError)
+        } else if (assistantData) {
+          setMessages((prev) => [...prev, assistantData])
+          setTutorResponses((prev) => [
+            ...prev,
+            { messageId: assistantData.id, response: tutorReply },
+          ])
+        }
+
+        // Bump chat updated_at so this chat floats to the top
+        setChats((prev) =>
+          prev
+            .map((c) =>
+              c.id === selectedChatId ? { ...c, updated_at: new Date().toISOString() } : c,
+            )
+            .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)),
+        )
+      } catch (err) {
+        console.error('Tutor chat error:', err)
+        setError(
+          err instanceof Error ? err.message : 'The tutor could not respond. Please try again.',
+        )
+      }
     } catch (err) {
       console.error('Unexpected error sending message:', err)
+      setError('An unexpected error occurred while sending your message.')
     } finally {
       setSending(false)
     }
@@ -273,26 +340,44 @@ export default function ChatPage() {
                   This conversation is empty. Send a message to begin.
                 </div>
               ) : (
-                messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={cn(
-                      'flex',
-                      message.role === 'user' ? 'justify-end' : 'justify-start',
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'max-w-[75%] rounded-lg px-3 py-2 text-sm',
-                        message.role === 'user'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted text-foreground',
+                messages.map((message) => {
+                  const tutorEntry = tutorResponses.find(
+                    (entry) => entry.messageId === message.id,
+                  )
+                  return (
+                    <div key={message.id} className="space-y-1">
+                      <div
+                        className={cn(
+                          'flex',
+                          message.role === 'user' ? 'justify-end' : 'justify-start',
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            'max-w-[75%] rounded-lg px-3 py-2 text-sm',
+                            message.role === 'user'
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-muted text-foreground',
+                          )}
+                        >
+                          {message.content}
+                        </div>
+                      </div>
+                      {tutorEntry?.response.word_card && (
+                        <TutorWordCardView
+                          card={tutorEntry.response.word_card}
+                          onAdd={() => handleAddWordToList(tutorEntry.response.word_card!)}
+                        />
                       )}
-                    >
-                      {message.content}
                     </div>
-                  </div>
-                ))
+                  )
+                })
+              )}
+
+              {error && (
+                <div className="text-xs text-destructive">
+                  {error}
+                </div>
               )}
             </div>
 
@@ -312,6 +397,61 @@ export default function ChatPage() {
             </form>
           </>
         )}
+      </Card>
+    </div>
+  )
+}
+
+async function handleAddWordToList(card: TutorWordCard) {
+  try {
+    const { error } = await supabase.from('words').insert({ word: card.word.trim() })
+    if (error) {
+      console.error('Failed to add word to list:', error)
+      alert('Failed to add word to your list.')
+    } else {
+      // Optional simple feedback; in a real app you might use a toast
+      console.log('Added word to list:', card.word)
+    }
+  } catch (err) {
+    console.error('Unexpected error adding word:', err)
+    alert('An unexpected error occurred while adding the word.')
+  }
+}
+
+interface TutorWordCardViewProps {
+  card: TutorWordCard
+  onAdd: () => void
+}
+
+function TutorWordCardView({ card, onAdd }: TutorWordCardViewProps) {
+  return (
+    <div className="flex justify-start">
+      <Card className="max-w-[75%] border-primary/40 bg-primary/5 px-3 py-2 text-sm">
+        <div className="mb-1 text-xs font-semibold uppercase text-primary">New word to learn</div>
+        <div className="text-base font-semibold">
+          {card.word}
+          {card.part_of_speech ? (
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              ({card.part_of_speech})
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-1 text-sm text-muted-foreground">
+          {card.translation}
+        </div>
+        <div className="mt-2 text-sm">
+          <span className="font-medium">Example:</span> {card.example_sentence}
+        </div>
+        {card.explanation && (
+          <div className="mt-1 text-xs text-muted-foreground">
+            {card.explanation}
+          </div>
+        )}
+        <div className="mt-2 flex justify-end">
+          <Button size="xs" variant="outline" onClick={onAdd}>
+            Add to my list
+          </Button>
+        </div>
       </Card>
     </div>
   )
