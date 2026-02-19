@@ -50,6 +50,52 @@ export interface Database {
           created_at?: string
         }
       }
+      chats: {
+        Row: {
+          id: string
+          user_id: string
+          title: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          title?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          title?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      chat_messages: {
+        Row: {
+          id: string
+          chat_id: string
+          role: 'user' | 'assistant' | 'system'
+          content: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          chat_id: string
+          role: 'user' | 'assistant' | 'system'
+          content: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          chat_id?: string
+          role?: 'user' | 'assistant' | 'system'
+          content?: string
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
