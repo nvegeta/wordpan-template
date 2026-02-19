@@ -352,15 +352,23 @@ export default function ChatPage() {
                           message.role === 'user' ? 'justify-end' : 'justify-start',
                         )}
                       >
-                        <div
-                          className={cn(
-                            'max-w-[75%] rounded-lg px-3 py-2 text-sm',
-                            message.role === 'user'
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted text-foreground',
-                          )}
-                        >
-                          {message.content}
+                        <div className="flex max-w-[75%] flex-col gap-0.5">
+                          {message.role === 'assistant' &&
+                            tutorEntry?.response.delegated_agent && (
+                              <span className="text-xs text-muted-foreground">
+                                [Router → {tutorEntry.response.delegated_agent}]
+                              </span>
+                            )}
+                          <div
+                            className={cn(
+                              'rounded-lg px-3 py-2 text-sm',
+                              message.role === 'user'
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-muted text-foreground',
+                            )}
+                          >
+                            {message.content}
+                          </div>
                         </div>
                       </div>
                       {tutorEntry?.response.word_card && (

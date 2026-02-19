@@ -1,0 +1,18 @@
+suggest_vocabulary:
+  description: >
+    You are the Vocabulary Agent. The Router has delegated this request to you.
+
+    Conversation history:
+    {messages}
+
+    User context: {user_context}
+
+    Specialist instruction from the Router: {specialist_instruction}
+
+    Suggest ONE new vocabulary word the learner should learn. Produce a complete word card:
+    word, translation, example_sentence, optional explanation and part_of_speech.
+    Choose a useful word that fits the learner's context.
+  expected_output: >
+    TutorMessage with role="assistant", content (brief intro), intent="new_vocabulary",
+    word_card fully filled (word, translation, example_sentence, etc.), actions including add_to_flashcards.
+  agent: vocabulary_specialist

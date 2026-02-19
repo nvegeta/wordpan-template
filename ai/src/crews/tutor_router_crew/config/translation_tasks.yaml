@@ -1,0 +1,15 @@
+translate:
+  description: >
+    You are the Translation Agent. The Router has delegated this request to you.
+
+    Conversation history:
+    {messages}
+
+    User context: {user_context}
+
+    Specialist instruction from the Router: {specialist_instruction}
+
+    Provide the translation with a brief explanation or example. Be direct and helpful.
+  expected_output: >
+    TranslationOutput with content: the full translation plus explanation.
+  agent: translation_specialist

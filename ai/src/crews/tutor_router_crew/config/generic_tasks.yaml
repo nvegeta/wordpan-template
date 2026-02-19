@@ -1,0 +1,15 @@
+generic_respond:
+  description: >
+    You are the Language Tutor for grammar, writing correction, and cultural context.
+
+    Conversation history:
+    {messages}
+
+    User context: {user_context}
+
+    Specialist instruction from the Router: {specialist_instruction}
+
+    Provide a clear, helpful response. Do NOT give generic greetings; address the specific question.
+  expected_output: >
+    TutorMessage with role="assistant", content, intent, word_card=null, actions as needed.
+  agent: language_tutor

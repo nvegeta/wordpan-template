@@ -39,6 +39,7 @@ export interface TutorMessageResponse {
   intent: TutorIntent
   word_card: TutorWordCard | null
   actions: TutorAction[]
+  delegated_agent?: string | null
 }
 
 /**

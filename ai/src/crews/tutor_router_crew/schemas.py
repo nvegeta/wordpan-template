@@ -65,6 +65,15 @@ class TutorAction(BaseModel):
     )
 
 
+class TranslationOutput(BaseModel):
+    """Output from the Translation Agent."""
+
+    content: str = Field(
+        ...,
+        description="Translation with explanation and example usage",
+    )
+
+
 class TutorMessage(BaseModel):
     """Final structured output returned by the Smart Tutor router."""
 
@@ -87,5 +96,9 @@ class TutorMessage(BaseModel):
     actions: List[TutorAction] = Field(
         default_factory=list,
         description="Optional list of actions the frontend/backend can execute",
+    )
+    delegated_agent: Optional[str] = Field(
+        None,
+        description="Which specialist agent handled this (e.g. 'Translation Agent', 'Vocabulary Agent') for UI display",
     )
 

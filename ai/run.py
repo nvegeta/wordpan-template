@@ -1,5 +1,6 @@
 import asyncio
 import os
+import traceback
 import warnings
 from functools import wraps
 from typing import Optional
@@ -12,7 +13,11 @@ from crews.random_phrase_crew.crew import RandomPhraseCrew
 from crews.random_phrase_crew.schemas import PhraseOutput
 from crews.similar_words_crew.crew import SimilarWordsCrew
 from crews.similar_words_crew.schemas import SimilarWordsOutput
-from crews.tutor_router_crew.crew import TutorRouterCrew
+from crews.tutor_router_crew.router_crew import RouterCrew
+from crews.tutor_router_crew.translation_crew import TranslationCrew
+from crews.tutor_router_crew.vocabulary_crew import VocabularyCrew
+from crews.tutor_router_crew.generic_crew import GenericTutorCrew
+from crews.tutor_router_crew.schemas import TutorMessage, RouterDecision
 
 from lib.tracer import traceable
 
@@ -146,7 +151,7 @@ async def run_tutor_router(
     user_context: Optional[str] = None,
 ) -> dict:
     """
-    Run the Smart Tutor router crew on the given conversation history.
+    Run the Smart Tutor: Router classifies intent, then delegates to specialist agents.
 
     Args:
         messages: Full conversation history as a list of {role, content} dicts.
@@ -155,26 +160,85 @@ async def run_tutor_router(
     Returns:
         A dict representation of the TutorMessage pydantic output.
     """
-    inputs: dict = {
-        "messages": messages,
-    }
+    base_inputs: dict = {"messages": messages}
     if user_context is not None:
-        inputs["user_context"] = user_context
+        base_inputs["user_context"] = user_context
+    else:
+        base_inputs["user_context"] = ""
 
-    result = await TutorRouterCrew().crew().kickoff_async(inputs=inputs)
+    # Step 1: Router classifies intent
+    router_result = await RouterCrew().crew().kickoff_async(inputs=base_inputs)
+    if not hasattr(router_result, "pydantic"):
+        return {
+            "role": "assistant",
+            "content": str(router_result),
+            "intent": "off_topic",
+            "word_card": None,
+            "actions": [],
+            "delegated_agent": None,
+        }
+    decision: RouterDecision = router_result.pydantic
 
-    if hasattr(result, "pydantic"):
-        # TutorMessage model
-        return result.pydantic.model_dump()
+    # Step 2: Off-topic -> refuse
+    if not decision.allowed_domain:
+        refusal = decision.refusal_message or (
+            "I'm your language tutor and can only help with language-related questions. "
+            "Try asking about translations, vocabulary, grammar, or cultural context!"
+        )
+        return TutorMessage(
+            role="assistant",
+            content=refusal,
+            intent="off_topic",
+            word_card=None,
+            actions=[],
+            delegated_agent=None,
+        ).model_dump()
 
-    # Fallback: wrap plain text into a minimal assistant response
-    return {
-        "role": "assistant",
-        "content": str(result),
-        "intent": "off_topic",
-        "word_card": None,
-        "actions": [],
-    }
+    # Step 3: Delegate to specialist
+    specialist_inputs = {**base_inputs, "specialist_instruction": decision.specialist_instruction}
+
+    if decision.intent == "translation":
+        trans_result = await TranslationCrew().crew().kickoff_async(inputs=specialist_inputs)
+        if hasattr(trans_result, "pydantic"):
+            content = trans_result.pydantic.content
+        else:
+            content = str(trans_result)
+        return TutorMessage(
+            role="assistant",
+            content=content,
+            intent="translation",
+            word_card=None,
+            actions=[],
+            delegated_agent="Translation Agent",
+        ).model_dump()
+
+    if decision.intent == "new_vocabulary":
+        vocab_result = await VocabularyCrew().crew().kickoff_async(inputs=specialist_inputs)
+        if hasattr(vocab_result, "pydantic"):
+            msg = vocab_result.pydantic.model_copy(update={"delegated_agent": "Vocabulary Agent"})
+            return msg.model_dump()
+        return TutorMessage(
+            role="assistant",
+            content=str(vocab_result),
+            intent="new_vocabulary",
+            word_card=None,
+            actions=[],
+            delegated_agent="Vocabulary Agent",
+        ).model_dump()
+
+    # Grammar, writing, cultural, small_talk -> Generic Tutor
+    generic_result = await GenericTutorCrew().crew().kickoff_async(inputs=specialist_inputs)
+    if hasattr(generic_result, "pydantic"):
+        msg = generic_result.pydantic.model_copy(update={"delegated_agent": "Language Tutor"})
+        return msg.model_dump()
+    return TutorMessage(
+        role="assistant",
+        content=str(generic_result),
+        intent=decision.intent,
+        word_card=None,
+        actions=[],
+        delegated_agent="Language Tutor",
+    ).model_dump()
 
 
 @app.route("/health", methods=["GET"])
@@ -320,7 +384,15 @@ async def tutor_chat():
         result = await run_tutor_router(validated_messages, user_context or "")
         return jsonify(result), 200
     except Exception as e:
-        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+        tb = traceback.format_exc()
+        print(tb, flush=True)
+        return (
+            jsonify({
+                "error": str(e),
+                "traceback": tb,
+            }),
+            500,
+        )
 
 
 if __name__ == "__main__":
