@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { useUser } from '@/contexts/UserContext'
 import { supabase } from '@/lib/supabase'
 import type { Database } from '@/lib/database.types'
@@ -415,14 +416,13 @@ async function handleAddWordToList(card: TutorWordCard) {
     const { error } = await supabase.from('words').insert({ word: card.word.trim() })
     if (error) {
       console.error('Failed to add word to list:', error)
-      alert('Failed to add word to your list.')
+      toast.error('Failed to add to your list.')
     } else {
-      // Optional simple feedback; in a real app you might use a toast
-      console.log('Added word to list:', card.word)
+      toast.success('Added to your list')
     }
   } catch (err) {
     console.error('Unexpected error adding word:', err)
-    alert('An unexpected error occurred while adding the word.')
+    toast.error('Something went wrong.')
   }
 }
 

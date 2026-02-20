@@ -12,6 +12,15 @@ suggest_vocabulary:
     Suggest ONE new vocabulary word the learner should learn. Produce a complete word card:
     word, translation, example_sentence, optional explanation and part_of_speech.
     Choose a useful word that fits the learner's context.
+
+    If you have check_word_pair_in_deck and save_word_pair tools:
+    1) FIRST response (when suggesting the new word): Call check_word_pair_in_deck with source_word
+       (translation in user's language) and translated_word (the new word). If the result says
+       "already in deck", give the word card and add that this pair is already in the user's deck—
+       do NOT offer to save. If "not in deck", give the word card and OFFER to save (e.g. "Would
+       you like me to add this to your flashcard deck?"). Do NOT call save_word_pair in this turn.
+    2) LATER response (when the user confirms save): Call save_word_pair. Your reply must be ONLY
+       the tool's result (success or "already in your deck"); no word card, no explanation.
   expected_output: >
     TutorMessage with role="assistant", content (brief intro), intent="new_vocabulary",
     word_card fully filled (word, translation, example_sentence, etc.), actions including add_to_flashcards.

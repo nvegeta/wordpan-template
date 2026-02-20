@@ -71,7 +71,13 @@ export function useWordPairs() {
     setMutationError(null)
     setMutationLoading(true)
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setMutationError(new Error('You must be signed in to add word pairs'))
+        return { error: new Error('You must be signed in to add word pairs') }
+      }
       const { error } = await supabase.from('word_pairs').insert({
+        user_id: user.id,
         word1: word1.trim(),
         word2: word2.trim(),
       })

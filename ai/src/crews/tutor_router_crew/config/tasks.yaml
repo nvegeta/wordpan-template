@@ -8,7 +8,22 @@ route_only:
     The learner's profile / context (if provided) is:
     {user_context}
 
-    Your job is to:
+    STEP 0 - SAVE CONFIRMATION (check this first):
+    Look at the LAST assistant message and the LAST user message. If the last assistant
+    message offers to save/add something to the flashcard deck (e.g. "Would you like me to
+    save this word to your flashcard deck?", "add this to your flashcard deck") AND the
+    last user message is a short confirmation ("yes", "yeah", "sure", "save it", "yes, save it",
+    "please do", "add it", "go ahead", etc.), then you MUST:
+      - Set intent to "translation" if the conversation was about translating a word/phrase.
+      - Set intent to "new_vocabulary" if the conversation was about learning a new vocabulary word.
+      - In specialist_instruction write: "The user confirmed they want to save the word we
+        just discussed. Call save_word_pair with that word and its translation, then report
+        the tool result."
+      - Do NOT set intent to grammar_explanation, writing_correction, cultural_context, or
+        small_talk_language_related. Only Translation Agent and Vocabulary Agent can save
+        words; Language Tutor cannot.
+
+    Your job (when STEP 0 does not apply):
       1) Classify the user's intent for the MOST RECENT user message:
          - translation: user asks how to say/translate something
          - new_vocabulary: user asks for a new word to learn

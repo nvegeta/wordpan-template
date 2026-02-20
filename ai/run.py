@@ -18,6 +18,8 @@ from crews.tutor_router_crew.translation_crew import TranslationCrew
 from crews.tutor_router_crew.vocabulary_crew import VocabularyCrew
 from crews.tutor_router_crew.generic_crew import GenericTutorCrew
 from crews.tutor_router_crew.schemas import TutorMessage, RouterDecision
+from crews.tutor_router_crew.tools.save_word_pair import SaveWordPairTool
+from crews.tutor_router_crew.tools.check_word_pair_in_deck import CheckWordPairInDeckTool
 
 from lib.tracer import traceable
 
@@ -69,6 +71,7 @@ def require_auth(f):
             # Verify the JWT token with Supabase
             user_response = supabase.auth.get_user(token)
             request.user = user_response.user
+            request.auth_token = token
         except Exception as e:
             return jsonify({"error": f"Authentication failed: {str(e)}"}), 401
 
@@ -145,10 +148,117 @@ async def get_similar_words(word1: str, word2: str) -> SimilarWordsOutput:
     return SimilarWordsOutput(similar_words=[str(result)])
 
 
+def _create_user_supabase(access_token: str) -> Client:
+    """Create a Supabase client with the user's JWT for RLS."""
+    client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    client.auth.set_session(access_token=access_token, refresh_token="")
+    return client
+
+
+# Phrases that mean "yes, save the word we just discussed"
+_SAVE_CONFIRMATION_PHRASES = frozenset(
+    p.strip().lower()
+    for p in (
+        "yes", "yeah", "yep", "sure", "ok", "okay", "please", "please do",
+        "save it", "yes, save it", "yes save it", "add it", "add it please",
+        "go ahead", "do it", "yes please", "sure thing",
+    )
+)
+
+
+def _strip_offer_when_already_in_deck(content: str) -> str:
+    """
+    If content contains both an offer to save and 'already in your deck',
+    remove the offer sentence so we do not say 'Would you like to save? ... already in your deck.'
+    """
+    if not content or "already in your deck" not in content:
+        return content
+    # Remove common offer phrases when duplicate message is present
+    for phrase in (
+        "Would you like me to save this word to your flashcard deck?",
+        "Would you like me to add this to your flashcard deck?",
+        "Would you like me to add this word to your flashcard deck?",
+    ):
+        if phrase in content:
+            content = content.replace(phrase, "").strip()
+            # Collapse multiple spaces and fix ".." or ". ."
+            while "  " in content:
+                content = content.replace("  ", " ")
+            if content.startswith(". "):
+                content = content[2:].strip()
+    return content
+
+
+def _extract_save_tool_message_only(content: str) -> str:
+    """Keep only the save_word_pair tool result in content; strip any preceding explanation."""
+    if not content or not content.strip():
+        return content
+    # Success message: "Done! I've added ... You'll see it in your next practice session."
+    if "Done! I've added" in content:
+        start = content.find("Done! I've added")
+        end_phrase = "You'll see it in your next practice session."
+        end = content.find(end_phrase, start)
+        if end != -1:
+            return content[start : end + len(end_phrase)].strip()
+        return content[start:].strip()
+    # Duplicate message: "This word pair (...) is already in your deck. No duplicate was created."
+    if "already in your deck" in content or "No duplicate was created" in content:
+        start = content.find("This word pair")
+        if start != -1:
+            end_phrase = "No duplicate was created."
+            end = content.find(end_phrase, start)
+            if end != -1:
+                return content[start : end + len(end_phrase)].strip()
+            return content[start:].strip()
+    return content
+
+
+def _detect_save_confirmation_and_override_intent(
+    messages: list[dict[str, str]],
+) -> Optional[str]:
+    """
+    If the last user message is a short confirmation and the previous assistant
+    offered to save a word to the flashcard deck, return the intent we should
+    use instead of the Router (translation or new_vocabulary). Otherwise return None.
+    """
+    if not messages or len(messages) < 2:
+        return None
+    last = messages[-1]
+    if last.get("role") != "user":
+        return None
+    user_content = (last.get("content") or "").strip().lower().rstrip(".,!?")
+    if not user_content or len(user_content) > 60:
+        return None
+    if user_content not in _SAVE_CONFIRMATION_PHRASES and not (
+        any(w in user_content for w in ("yes", "save", "add", "sure", "please"))
+        and len(user_content) <= 25
+    ):
+        return None
+    # Find last assistant message
+    last_assistant_content = None
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].get("role") == "assistant":
+            last_assistant_content = (messages[i].get("content") or "").strip().lower()
+            break
+    if not last_assistant_content:
+        return None
+    if "flashcard" not in last_assistant_content:
+        return None
+    if "save" not in last_assistant_content and "add" not in last_assistant_content:
+        return None
+    # Prefer new_vocabulary if the assistant was clearly suggesting a new word
+    if "new word" in last_assistant_content or "vocabulary" in last_assistant_content:
+        return "new_vocabulary"
+    # Default: treat as confirmation after a translation
+    return "translation"
+
+
 @traceable
 async def run_tutor_router(
     messages: list[dict[str, str]],
     user_context: Optional[str] = None,
+    user_id: Optional[str] = None,
+    access_token: Optional[str] = None,
 ) -> dict:
     """
     Run the Smart Tutor: Router classifies intent, then delegates to specialist agents.
@@ -156,6 +266,8 @@ async def run_tutor_router(
     Args:
         messages: Full conversation history as a list of {role, content} dicts.
         user_context: Optional user profile/context string.
+        user_id: Optional user UUID for save_word_pair tool.
+        access_token: Optional JWT for user-scoped Supabase (RLS).
 
     Returns:
         A dict representation of the TutorMessage pydantic output.
@@ -165,6 +277,13 @@ async def run_tutor_router(
         base_inputs["user_context"] = user_context
     else:
         base_inputs["user_context"] = ""
+
+    save_tool = None
+    check_tool = None
+    if user_id and access_token:
+        supabase_user = _create_user_supabase(access_token)
+        save_tool = SaveWordPairTool(user_id=user_id, supabase_client=supabase_user)
+        check_tool = CheckWordPairInDeckTool(user_id=user_id, supabase_client=supabase_user)
 
     # Step 1: Router classifies intent
     router_result = await RouterCrew().crew().kickoff_async(inputs=base_inputs)
@@ -178,6 +297,28 @@ async def run_tutor_router(
             "delegated_agent": None,
         }
     decision: RouterDecision = router_result.pydantic
+
+    # Override: if user said "yes"/"save it" after an offer to save, force translation/new_vocabulary
+    # so the agent that has save_word_pair runs (Router often sends this to Language Tutor otherwise)
+    override_intent = _detect_save_confirmation_and_override_intent(messages)
+    if (
+        override_intent
+        and decision.allowed_domain
+        and decision.intent not in ("translation", "new_vocabulary")
+    ):
+        decision = decision.model_copy(
+            update={
+                "intent": override_intent,
+                "specialist_instruction": (
+                    "The user confirmed they want to save the word. You MUST call the save_word_pair "
+                    "tool with the source word and translation from the conversation (e.g. hello and hola). "
+                    "Your response must be EXACTLY the tool's return message and nothing else: "
+                    "if the tool says 'Done! I've added...' then output only that; "
+                    "if the tool says 'This word pair ... is already in your deck' then output only that. "
+                    "Do NOT repeat the translation, pronunciation, or any other explanation."
+                ),
+            }
+        )
 
     # Step 2: Off-topic -> refuse
     if not decision.allowed_domain:
@@ -196,16 +337,22 @@ async def run_tutor_router(
 
     # Step 3: Delegate to specialist
     specialist_inputs = {**base_inputs, "specialist_instruction": decision.specialist_instruction}
+    is_save_confirmation = "MUST call the save_word_pair" in (decision.specialist_instruction or "")
 
     if decision.intent == "translation":
-        trans_result = await TranslationCrew().crew().kickoff_async(inputs=specialist_inputs)
+        trans_crew = TranslationCrew(save_tool=save_tool, check_tool=check_tool)
+        trans_result = await trans_crew.crew().kickoff_async(inputs=specialist_inputs)
         if hasattr(trans_result, "pydantic"):
             content = trans_result.pydantic.content
         else:
             content = str(trans_result)
+        if is_save_confirmation and content:
+            content = _extract_save_tool_message_only(content)
+        else:
+            content = _strip_offer_when_already_in_deck(content or "")
         return TutorMessage(
             role="assistant",
-            content=content,
+            content=content or "",
             intent="translation",
             word_card=None,
             actions=[],
@@ -213,13 +360,25 @@ async def run_tutor_router(
         ).model_dump()
 
     if decision.intent == "new_vocabulary":
-        vocab_result = await VocabularyCrew().crew().kickoff_async(inputs=specialist_inputs)
+        vocab_crew = VocabularyCrew(save_tool=save_tool, check_tool=check_tool)
+        vocab_result = await vocab_crew.crew().kickoff_async(inputs=specialist_inputs)
         if hasattr(vocab_result, "pydantic"):
             msg = vocab_result.pydantic.model_copy(update={"delegated_agent": "Vocabulary Agent"})
-            return msg.model_dump()
+            out = msg.model_dump()
+            if is_save_confirmation:
+                if out.get("content"):
+                    out["content"] = _extract_save_tool_message_only(out["content"])
+                out["word_card"] = None
+            else:
+                if out.get("content"):
+                    out["content"] = _strip_offer_when_already_in_deck(out["content"])
+            return out
+        content = str(vocab_result)
+        if is_save_confirmation:
+            content = _extract_save_tool_message_only(content)
         return TutorMessage(
             role="assistant",
-            content=str(vocab_result),
+            content=content,
             intent="new_vocabulary",
             word_card=None,
             actions=[],
@@ -378,10 +537,16 @@ async def tutor_chat():
             return jsonify({"error": "No valid messages provided"}), 400
 
         # Get user context from Supabase (optional, same as random-phrase)
-        user_id = request.user.id
+        user_id = str(request.user.id)
         user_context = await get_user_context(user_id)
+        access_token = getattr(request, "auth_token", None)
 
-        result = await run_tutor_router(validated_messages, user_context or "")
+        result = await run_tutor_router(
+            validated_messages,
+            user_context or "",
+            user_id=user_id,
+            access_token=access_token,
+        )
         return jsonify(result), 200
     except Exception as e:
         tb = traceback.format_exc()

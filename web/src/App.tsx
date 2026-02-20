@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Toaster } from '@/components/ui/sonner'
 import { UserProvider } from './contexts/UserContext'
 import { UserLayout } from './layouts/UserLayout'
 import { AuthLayout } from './layouts/AuthLayout'
@@ -14,6 +15,7 @@ function App() {
   return (
     <BrowserRouter>
       <UserProvider>
+        <Toaster richColors position="top-center" />
         <Routes>
           {/* Auth routes with /auth prefix */}
           <Route path="/auth" element={<AuthLayout />}>

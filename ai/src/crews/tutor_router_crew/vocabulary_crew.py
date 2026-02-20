@@ -22,11 +22,21 @@ class VocabularyCrew:
     agents: List[BaseAgent]
     tasks: List[Task]
 
+    def __init__(self, save_tool=None, check_tool=None, **kwargs):
+        self.save_tool = save_tool
+        self.check_tool = check_tool
+
     @agent
     def vocabulary_specialist(self) -> Agent:
+        tools = []
+        if getattr(self, "save_tool", None):
+            tools.append(self.save_tool)
+        if getattr(self, "check_tool", None):
+            tools.append(self.check_tool)
         return Agent(
             config=self.agents_config["vocabulary_specialist"],
             llm=DEFAULT_LLM,
+            tools=tools,
         )
 
     @task

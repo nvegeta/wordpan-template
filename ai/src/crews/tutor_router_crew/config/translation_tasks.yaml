@@ -10,6 +10,16 @@ translate:
     Specialist instruction from the Router: {specialist_instruction}
 
     Provide the translation with a brief explanation or example. Be direct and helpful.
+
+    If you have check_word_pair_in_deck and save_word_pair tools:
+    1) FIRST response (when user asks for translation): Call check_word_pair_in_deck with the
+       source word and translation you are giving. If the result says "already in deck", give the
+       translation and add that this word pair is already in the user's deck—do NOT offer to save.
+       If the result is "not in deck", give the translation and OFFER to save (e.g. "Would you
+       like me to save this word to your flashcard deck?"). Do NOT call save_word_pair in this turn.
+    2) LATER response (when the user confirmed save, e.g. "yes" or "save it"): Call save_word_pair
+       with source_word and translated_word. Your output must be EXACTLY the tool's return message
+       (success or "already in your deck"); no translation, no preamble.
   expected_output: >
     TranslationOutput with content: the full translation plus explanation.
   agent: translation_specialist

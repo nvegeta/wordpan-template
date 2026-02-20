@@ -33,18 +33,21 @@ export interface Database {
       word_pairs: {
         Row: {
           id: string
+          user_id: string | null
           word1: string
           word2: string
           created_at: string
         }
         Insert: {
           id?: string
+          user_id: string
           word1: string
           word2: string
           created_at?: string
         }
         Update: {
           id?: string
+          user_id?: string
           word1?: string
           word2?: string
           created_at?: string
