@@ -42,6 +42,12 @@ export interface TutorMessageResponse {
   delegated_agent?: string | null
 }
 
+export interface LivekitTokenResponse {
+  token: string
+  url: string
+  roomName: string
+}
+
 /**
  * Generate a random phrase using the AI service
  * @param words - Array of words to use in the phrase
@@ -130,6 +136,36 @@ export async function callTutorChat(
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
     throw new Error(errorData.error || `Tutor chat failed: ${errorData.error || response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Request a LiveKit access token for the current user from the AI service.
+ * The token is used by the frontend to join a LiveKit room with the voice agent.
+ */
+export async function getLivekitToken(roomName?: string): Promise<LivekitTokenResponse> {
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (!session) {
+    throw new Error('User must be authenticated to start a voice session')
+  }
+
+  const response = await fetch(`${AI_SERVICE_URL}/api/livekit-token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      roomName,
+    }),
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(errorData.error || `Failed to get LiveKit token: ${response.statusText}`)
   }
 
   return response.json()

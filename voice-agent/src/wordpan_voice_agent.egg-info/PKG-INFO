@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: wordpan-voice-agent
+Version: 0.1.0
+Summary: LiveKit voice agent for WordPan vocabulary practice
+Requires-Python: >=3.9
+Requires-Dist: av==15.1.0
+Requires-Dist: livekit-agents[silero,turn-detector]~=1.2
+Requires-Dist: livekit-plugins-noise-cancellation~=0.2
+Requires-Dist: python-dotenv
+Requires-Dist: supabase>=2.22.0

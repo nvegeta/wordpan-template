@@ -7,6 +7,7 @@ from typing import Optional
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from livekit import api as lk_api
 from supabase import create_client, Client
 
 from crews.random_phrase_crew.crew import RandomPhraseCrew
@@ -47,6 +48,11 @@ CORS(app, resources={
 SUPABASE_URL = os.getenv("SUPABASE_URL", "http://127.0.0.1:54321")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+LIVEKIT_URL = os.getenv("LIVEKIT_URL", "")
+LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "")
+LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "")
+LIVEKIT_AGENT_NAME = os.getenv("LIVEKIT_AGENT_NAME", "")
 
 
 def require_auth(f):
@@ -449,6 +455,70 @@ async def get_random_phrase():
 
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/livekit-token", methods=["POST"])
+@require_auth
+async def get_livekit_token():
+    """
+    Issue a LiveKit access token for the current user so the frontend
+    can join a voice room with the voice agent.
+
+    Request body (optional):
+        {
+          "roomName": "string"  // if omitted, a default per-user room is used
+        }
+
+    Response:
+        {
+          "token": "<jwt>",
+          "url": "<livekit_server_url>",
+          "roomName": "<room_name>"
+        }
+    """
+    if not LIVEKIT_URL or not LIVEKIT_API_KEY or not LIVEKIT_API_SECRET:
+        return (
+            jsonify(
+                {
+                    "error": "LiveKit is not configured. Please set LIVEKIT_URL, "
+                    "LIVEKIT_API_KEY, and LIVEKIT_API_SECRET in ai/.env.",
+                }
+            ),
+            500,
+        )
+
+    try:
+        data = request.get_json(silent=True) or {}
+        user = request.user
+        user_id = str(user.id)
+
+        room_name = (data.get("roomName") or "").strip() or f"wordpan-voice-{user_id}"
+
+        at = lk_api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+        grants = lk_api.VideoGrants(
+            room=room_name,
+            room_join=True,
+            can_publish=True,
+            can_subscribe=True,
+        )
+        token = at.with_identity(user_id).with_grants(grants).to_jwt()
+
+        # After creating the participant token, explicitly dispatch the agent
+        if LIVEKIT_AGENT_NAME:
+            try:
+                api_client = lk_api.LiveKitAPI()  
+                await api_client.agent_dispatch.create_dispatch(
+                    lk_api.CreateAgentDispatchRequest(
+                        agent_name=LIVEKIT_AGENT_NAME,
+                        room=room_name,
+                    )
+                )
+            except Exception as dispatch_err:
+                print(f"Failed to dispatch agent: {dispatch_err}", flush=True)
+
+        return jsonify({"token": token, "url": LIVEKIT_URL, "roomName": room_name}), 200
+    except Exception as e:
+        return jsonify({"error": f"Failed to create LiveKit token: {str(e)}"}), 500
 
 
 @app.route("/api/similar-words", methods=["POST"])

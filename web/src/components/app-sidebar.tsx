@@ -5,6 +5,7 @@ import {
   IconInnerShadowTop,
   IconLink,
   IconMessages,
+  IconMicrophone,
   IconSparkles,
 } from "@tabler/icons-react"
 
@@ -55,6 +56,11 @@ const data = {
       name: "Chat",
       url: "/chat",
       icon: IconMessages,
+    },
+    {
+      name: "Voice Practice",
+      url: "/voice-practice",
+      icon: IconMicrophone,
     },
   ],
 }

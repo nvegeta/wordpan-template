@@ -1,0 +1,6 @@
+pyproject.toml
+src/wordpan_voice_agent.egg-info/PKG-INFO
+src/wordpan_voice_agent.egg-info/SOURCES.txt
+src/wordpan_voice_agent.egg-info/dependency_links.txt
+src/wordpan_voice_agent.egg-info/requires.txt
+src/wordpan_voice_agent.egg-info/top_level.txt

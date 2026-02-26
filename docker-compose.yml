@@ -20,6 +20,19 @@ services:
       timeout: 10s
       retries: 25
 
+  voice-agent:
+    build:
+      context: ./voice-agent
+      dockerfile: Dockerfile
+      target: development
+    restart: unless-stopped
+    env_file:
+      - ./ai/.env
+    volumes:
+      - ./voice-agent:/app
+      - /app/.venv
+      - /root/.cache
+
   ai:
     build:
       context: ./ai

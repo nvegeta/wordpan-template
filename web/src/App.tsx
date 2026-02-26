@@ -10,6 +10,7 @@ import WordsPage from './pages/words'
 import WordPairsPage from './pages/word-pairs'
 import RandomPhrasePage from './pages/random-phrase'
 import ChatPage from './pages/chat'
+import VoicePracticePage from './pages/voice-practice'
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
             <Route path="/word-pairs" element={<WordPairsPage />} />
             <Route path="/random-phrase" element={<RandomPhrasePage />} />
             <Route path="/chat" element={<ChatPage />} />
+            <Route path="/voice-practice" element={<VoicePracticePage />} />
           </Route>
 
           {/* Default redirect */}
